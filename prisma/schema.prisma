@@ -1,0 +1,100 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String       @id @default(uuid())
+  name          String
+  email         String       @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?      // Nulo para usuários OAuth (Google)
+  statsVpip     Float        @default(0.0) // Voluntary Put In Pot
+  statsPfr      Float        @default(0.0) // Pre-flop Raise
+  statsHands    Int          @default(0)   // Total de mãos jogadas
+  tourneysWon   Int          @default(0)   // Torneios ganhos (1º lugar)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  tournaments   Tournament[]
+  accounts      Account[]
+  sessions      Session[]
+}
+
+// Modelos necessários para o NextAuth Prisma Adapter
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  session_state     String?
+  id_token          String? @db.Text
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Tournament {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  initialChips  Int           @default(10000)
+  buyIn         Float         @default(10.0)
+  blindSpeed    String        @default("REGULAR") // TURBO, REGULAR, DEEP
+  totalPlayers  Int           @default(27)         // Padrão: 27 (3 mesas de 9)
+  finalPosition Int?          // Posição final do usuário no torneio
+  earnings      Float         @default(0.0)
+  createdAt     DateTime      @default(now())
+  hands         HandHistory[]
+}
+
+model HandHistory {
+  id             String      @id @default(uuid())
+  tournamentId   String
+  tournament     Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  handNumber     Int
+  boardCards     String[]    // Ex: ["As", "Kd", "Qc", "Jh", "Ts"]
+  playerCards    String[]    // Ex: ["Kh", "Qh"]
+  actionsJson    String      // Histórico sequencial de apostas (Stringified JSON)
+  rulesViolated  String[]    // IDs das regras do POKER_RULES.ts que foram violadas
+  errorsFlagged  Boolean     @default(false)
+  potSize        Int         @default(0)
+  isTrainingMode Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  aiAnalysis     AiAnalysis?
+}
+
+model AiAnalysis {
+  id             String      @id @default(uuid())
+  handHistoryId  String      @unique
+  handHistory    HandHistory @relation(fields: [handHistoryId], references: [id], onDelete: Cascade)
+  feedbackText   String      @db.Text // Texto em Markdown gerado pelo Gemini
+  referencedBook String      // Livro e capítulo citados como conselho principal
+  createdAt      DateTime    @default(now())
+}
